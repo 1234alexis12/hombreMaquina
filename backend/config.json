@@ -1,0 +1,41 @@
+{
+  "camera": {
+    "index": 0,
+    "width": 1280,
+    "height": 720,
+    "desk_corners": [
+      [100, 80],
+      [1180, 80],
+      [1220, 680],
+      [60, 680]
+    ],
+    "warped_width": 800,
+    "warped_height": 600
+  },
+  "interaction": {
+    "dwell_time_ms": 800,
+    "cooldown_ms": 400,
+    "stability_threshold_px": 35,
+    "min_detection_confidence": 0.5
+  },
+  "zones": [
+    {
+      "id": 1,
+      "name": "Zona 1 (Espacio)",
+      "key": "space",
+      "label": "ESPACIO",
+      "aruco_id": 0,
+      "rect": [0.08, 0.15, 0.46, 0.85],
+      "color": "#3B82F6"
+    },
+    {
+      "id": 2,
+      "name": "Zona 2 (Enter)",
+      "key": "enter",
+      "label": "ENTER",
+      "aruco_id": 1,
+      "rect": [0.54, 0.15, 0.92, 0.85],
+      "color": "#10B981"
+    }
+  ]
+}

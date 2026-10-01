@@ -1,0 +1,14 @@
+# Dependencias principales del Backend TUI-A
+# Visión artificial y procesamiento de imágenes
+opencv-contrib-python>=4.8.0
+mediapipe>=0.10.0
+numpy>=1.24.0
+
+# Servidor web asíncrono y WebSockets en tiempo real
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+websockets>=11.0
+
+# Emulación de teclado a nivel de sistema operativo
+pynput>=1.7.6
+pyautogui>=0.9.54
