@@ -59,16 +59,22 @@ def ejecutar_calibrador():
     config = cargar_configuracion()
     cam_cfg = config.get("camera", {})
     
-    indice_camara = cam_cfg.get("index", 0)
+    fuente_camara = cam_cfg.get("source", cam_cfg.get("index", 0))
+    if isinstance(fuente_camara, str) and fuente_camara.strip().isdigit():
+        fuente_camara = int(fuente_camara.strip())
+        
     ancho_cam = cam_cfg.get("width", 1280)
     alto_cam = cam_cfg.get("height", 720)
     ancho_warp = cam_cfg.get("warped_width", 800)
     alto_warp = cam_cfg.get("warped_height", 600)
     
-    # Iniciar captura de video
-    cap = cv2.VideoCapture(indice_camara, cv2.CAP_DSHOW)
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(indice_camara)
+    # Iniciar captura de video (soporta índice numérico o URL de celular)
+    if isinstance(fuente_camara, int):
+        cap = cv2.VideoCapture(fuente_camara, cv2.CAP_DSHOW)
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(fuente_camara)
+    else:
+        cap = cv2.VideoCapture(fuente_camara)
         
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, ancho_cam)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, alto_cam)

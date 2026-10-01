@@ -45,6 +45,24 @@ export default function App() {
   const [pestañaActiva, setPestañaActiva] = useState('interfaz'); // 'interfaz' o 'experimento'
   const [dwellTimeMs, setDwellTimeMs] = useState(800);
   const [cooldownMs, setCooldownMs] = useState(400);
+  const [fuenteCamara, setFuenteCamara] = useState('0');
+
+  // Cargar configuración inicial desde el backend
+  useEffect(() => {
+    fetch('http://localhost:8000/api/config')
+      .then(res => res.json())
+      .then(data => {
+        if (data.camera) {
+          const src = data.camera.source !== undefined ? data.camera.source : (data.camera.index ?? '0');
+          setFuenteCamara(String(src));
+        }
+        if (data.interaction) {
+          if (data.interaction.dwell_time_ms) setDwellTimeMs(data.interaction.dwell_time_ms);
+          if (data.interaction.cooldown_ms) setCooldownMs(data.interaction.cooldown_ms);
+        }
+      })
+      .catch(err => console.warn('Backend aún iniciando...', err));
+  }, []);
 
   // Sincronizar cambio de Dwell Time hacia el backend en tiempo real vía WebSocket
   const manejarCambioDwell = (nuevoValor) => {
@@ -251,6 +269,7 @@ export default function App() {
         alCambiarCooldown={setCooldownMs}
         sonidoHabilitado={sonidoHabilitado}
         alCambiarSonido={setSonidoHabilitado}
+        fuenteCamaraInicial={fuenteCamara}
       />
 
     </div>

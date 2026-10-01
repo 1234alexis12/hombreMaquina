@@ -9,7 +9,7 @@
  */
 
 import React, { useState } from 'react';
-import { X, Volume2, VolumeX, Sliders, Check, RefreshCw } from 'lucide-react';
+import { X, Volume2, VolumeX, Sliders, Check, RefreshCw, Smartphone, Camera } from 'lucide-react';
 
 export function SettingsModal({
   abierto,
@@ -19,10 +19,12 @@ export function SettingsModal({
   sonidoHabilitado,
   alCambiarSonido,
   cooldownMs,
-  alCambiarCooldown
+  alCambiarCooldown,
+  fuenteCamaraInicial = '0'
 }) {
   if (!abierto) return null;
 
+  const [fuenteCamara, setFuenteCamara] = useState(String(fuenteCamaraInicial));
   const [guardando, setGuardando] = useState(false);
   const [mensajeExito, setMensajeExito] = useState(false);
 
@@ -36,6 +38,9 @@ export function SettingsModal({
           interaction: {
             dwell_time_ms: Number(dwellTimeMs),
             cooldown_ms: Number(cooldownMs)
+          },
+          camera: {
+            source: fuenteCamara.trim()
           }
         })
       });
@@ -122,7 +127,52 @@ export function SettingsModal({
             />
           </div>
 
-          {/* 3. Interruptor de Efectos de Sonido */}
+          {/* 3. Selección de Cámara (Webcam, DroidCam o Celular por Wi-Fi) */}
+          <div className="space-y-2 p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60">
+            <div className="flex items-center gap-2">
+              <Camera className="w-5 h-5 text-cyan-400" />
+              <label className="text-sm font-semibold text-slate-200">
+                Fuente de Cámara (Webcam o Celular)
+              </label>
+            </div>
+            <p className="text-xs text-slate-400">
+              Escribe el <strong>índice</strong> (0 para webcam integrada, 1 o 2 para DroidCam/Iriun USB) o la <strong>URL</strong> de la app IP Webcam.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={fuenteCamara}
+                onChange={(e) => setFuenteCamara(e.target.value)}
+                placeholder="0 o http://192.168.1.XX:8080/video"
+                className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-400"
+              />
+            </div>
+            <div className="flex gap-2 text-[10px] text-slate-400">
+              <button
+                type="button"
+                onClick={() => setFuenteCamara('0')}
+                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+              >
+                Webcam (0)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFuenteCamara('1')}
+                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+              >
+                DroidCam/USB (1)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFuenteCamara('http://192.168.1.50:8080/video')}
+                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
+              >
+                IP Webcam URL
+              </button>
+            </div>
+          </div>
+
+          {/* 4. Interruptor de Efectos de Sonido */}
           <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-800/60 border border-slate-700/60">
             <div className="flex items-center gap-3">
               {sonidoHabilitado ? (
@@ -147,7 +197,7 @@ export function SettingsModal({
             </button>
           </div>
 
-          {/* 4. Instrucción de Calibración */}
+          {/* 5. Instrucción de Calibración */}
           <div className="p-3.5 rounded-2xl bg-cyan-950/30 border border-cyan-800/40 text-xs text-cyan-200">
             <span className="font-bold">¿Deseas recalibrar la perspectiva de la mesa?</span>
             <p className="text-slate-400 mt-1">

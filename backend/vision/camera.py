@@ -19,23 +19,24 @@ class CamaraCenital:
     Controla la cámara web y la corrección de perspectiva de la mesa.
     """
     
-    def __init__(self, indice_camara=0, ancho=1280, alto=720, esquinas_mesa=None, ancho_salida=800, alto_salida=600):
+    def __init__(self, fuente_camara=0, ancho=1280, alto=720, esquinas_mesa=None, ancho_salida=800, alto_salida=600):
         """
         Inicializa la cámara y calcula la matriz de homografía.
         
         Parámetros:
-            indice_camara (int): Índice de dispositivo de la webcam (usualmente 0).
+            fuente_camara (int o str): Índice (0, 1, 2) para webcams/DroidCam,
+                                      o URL (ej. 'http://192.168.1.50:8080/video') para IP Webcam.
             ancho (int): Ancho de captura deseado.
             alto (int): Alto de captura deseado.
             esquinas_mesa (list): Coordenadas de los 4 puntos [superior-izq, superior-der, inferior-der, inferior-izq].
             ancho_salida (int): Ancho del lienzo aplanado en píxeles.
             alto_salida (int): Alto del lienzo aplanado en píxeles.
         """
-        self.indice = indice_camara
         self.ancho = ancho
         self.alto = alto
         self.ancho_salida = ancho_salida
         self.alto_salida = alto_salida
+        self.cap = None
         
         # Puntos de destino para la vista aplanada (rectángulo perfecto)
         self.puntos_destino = np.array([
@@ -59,18 +60,42 @@ class CamaraCenital:
         # Calcular matriz de transformación de perspectiva (Homografía)
         self.matriz_homografia = cv2.getPerspectiveTransform(self.esquinas_mesa, self.puntos_destino)
         
-        # Inicializar dispositivo de captura OpenCV
-        self.cap = cv2.VideoCapture(self.indice, cv2.CAP_DSHOW) # CAP_DSHOW acelera la apertura en Windows
-        if not self.cap.isOpened():
-            # Intentar sin DSHOW si falla
-            self.cap = cv2.VideoCapture(self.indice)
-            
+        # Iniciar la cámara con la fuente dada
+        self.cambiar_fuente(fuente_camara)
+
+    def cambiar_fuente(self, nueva_fuente):
+        """
+        Cambia la fuente de video en caliente (soporta índice numérico o URL de celular).
+        """
+        # Limpiar captura anterior si existía
+        if self.cap is not None and self.cap.isOpened():
+            self.cap.release()
+
+        # Parsear si el usuario pasó un string que en realidad es un número
+        if isinstance(nueva_fuente, str) and nueva_fuente.strip().isdigit():
+            self.fuente = int(nueva_fuente.strip())
+        elif isinstance(nueva_fuente, str):
+            self.fuente = nueva_fuente.strip()
+        else:
+            self.fuente = int(nueva_fuente)
+
+        logger.info(f"Conectando a fuente de video: {self.fuente}...")
+
+        if isinstance(self.fuente, int):
+            # Cámara física o virtual (DroidCam/Iriun) en Windows
+            self.cap = cv2.VideoCapture(self.fuente, cv2.CAP_DSHOW)
+            if not self.cap.isOpened():
+                self.cap = cv2.VideoCapture(self.fuente)
+        else:
+            # Flujo de red / URL de celular (ej. IP Webcam http://192.168.x.x:8080/video)
+            self.cap = cv2.VideoCapture(self.fuente)
+
         if self.cap.isOpened():
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.ancho)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.alto)
-            logger.info(f"Cámara abierta exitosamente en índice {self.indice} ({self.ancho}x{self.alto})")
+            logger.info(f"Cámara/Celular conectado exitosamente a: {self.fuente}")
         else:
-            logger.warning(f"No se pudo acceder a la cámara física en índice {self.indice}. Se usará modo sintético de prueba.")
+            logger.warning(f"No se pudo conectar a la fuente {self.fuente}. Modo sintético activo.")
 
     def actualizar_esquinas(self, nuevas_esquinas):
         """

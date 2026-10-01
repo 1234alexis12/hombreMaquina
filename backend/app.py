@@ -93,9 +93,10 @@ cam_cfg = config_actual.get("camera", {})
 inter_cfg = config_actual.get("interaction", {})
 zonas_cfg = config_actual.get("zones", [])
 
-# Instanciar subsistemas de visión
+# Instanciar subsistemas de visión (soporta webcam USB, virtual DroidCam o URL de celular)
+fuente_inicial = cam_cfg.get("source", cam_cfg.get("index", 0))
 camara = CamaraCenital(
-    indice_camara=cam_cfg.get("index", 0),
+    fuente_camara=fuente_inicial,
     ancho=cam_cfg.get("width", 1280),
     alto=cam_cfg.get("height", 720),
     esquinas_mesa=cam_cfg.get("desk_corners", None),
@@ -217,6 +218,12 @@ async def actualizar_configuracion(nuevos_datos: dict):
     config_actual.update(nuevos_datos)
     guardar_configuracion(config_actual)
     
+    # Aplicar cambios en caliente a la cámara si se modificó la fuente
+    if "camera" in nuevos_datos:
+        nueva_fuente = nuevos_datos["camera"].get("source", nuevos_datos["camera"].get("index", None))
+        if nueva_fuente is not None:
+            camara.cambiar_fuente(nueva_fuente)
+
     # Aplicar cambios en caliente al gestor de zonas
     if "interaction" in nuevos_datos:
         dwell_ms = nuevos_datos["interaction"].get("dwell_time_ms", 800)
