@@ -31,18 +31,24 @@ class DetectorManos:
         self.confianza_minima = confianza_minima
         self.max_manos = max_manos
         
-        # 1. Configurar MediaPipe Hands si la librería está presente
-        if TIENE_MEDIAPIPE:
-            self.mp_hands = mp.solutions.hands
-            self.detector_mp = self.mp_hands.Hands(
-                static_image_mode=False,
-                max_num_hands=self.max_manos,
-                min_detection_confidence=self.confianza_minima,
-                min_tracking_confidence=0.5
-            )
-            self.mp_draw = mp.solutions.drawing_utils
+        # 1. Configurar MediaPipe Hands si está disponible la API clásica de solutions
+        self.detector_mp = None
+        if TIENE_MEDIAPIPE and hasattr(mp, 'solutions') and hasattr(mp.solutions, 'hands'):
+            try:
+                self.mp_hands = mp.solutions.hands
+                self.detector_mp = self.mp_hands.Hands(
+                    static_image_mode=False,
+                    max_num_hands=self.max_manos,
+                    min_detection_confidence=self.confianza_minima,
+                    min_tracking_confidence=0.5
+                )
+                self.mp_draw = mp.solutions.drawing_utils
+                logger.info("MediaPipe Hands inicializado exitosamente.")
+            except Exception as e:
+                logger.warning(f"Error al inicializar MediaPipe: {e}. Usando fallback.")
+                self.detector_mp = None
         else:
-            self.detector_mp = None
+            logger.info("MediaPipe solutions no disponible en esta versión. Operando con detector de contornos y segmentación de piel de alta precisión.")
 
     def detectar(self, frame_mesa):
         """
