@@ -131,12 +131,14 @@ ultimo_evento_disparo = None
 def al_disparar_tecla(tecla):
     """Callback invocado cuando una zona completa su Dwell Time con éxito."""
     global ultimo_evento_disparo
+    ventana = teclado._obtener_titulo_ventana_activa()
     teclado.presionar_tecla(tecla)
     ultimo_evento_disparo = {
         "key": tecla,
-        "timestamp": time.time()
+        "timestamp": time.time(),
+        "target_window": ventana
     }
-    logger.info(f"[DISPARO REGISTRADO] Tecla '{tecla}' enviada al sistema operativo.")
+    logger.info(f"[DISPARO REGISTRADO] Tecla '{tecla}' enviada a ventana: '{ventana}'")
 
 gestor_zonas = GestorZonas(
     lista_config_zonas=zonas_cfg,

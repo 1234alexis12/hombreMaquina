@@ -128,6 +128,7 @@ export default function App() {
       const nuevoEvento = {
         id: Date.now(),
         key: telemetria.last_trigger.key,
+        targetWindow: telemetria.last_trigger.target_window || 'Ventana Activa',
         timestamp: new Date().toLocaleTimeString(),
         source: telemetria.zones?.find(z => z.key === telemetria.last_trigger.key)?.source || 'SENSOR'
       };
@@ -477,22 +478,29 @@ export default function App() {
                 </div>
 
                 {historialDisparos.length > 0 ? (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {historialDisparos.map((ev) => (
                       <div
                         key={ev.id}
-                        className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-800/60 border border-slate-700/40 text-xs font-mono"
+                        className="flex flex-col gap-1 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/40 text-xs font-mono"
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                          <span className="font-bold text-white uppercase">[{ev.key}]</span>
-                          <span className="text-slate-400">emulada con éxito</span>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                            <span className="font-bold text-white uppercase">[{ev.key}]</span>
+                            <span className="text-slate-400">emulada con éxito</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-slate-400 text-[11px]">
+                            <span>{ev.source}</span>
+                            <span className="text-slate-600">•</span>
+                            <span className="text-cyan-300">{ev.timestamp}</span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 text-slate-400 text-[11px]">
-                          <span>{ev.source}</span>
-                          <span className="text-slate-600">•</span>
-                          <span className="text-cyan-300">{ev.timestamp}</span>
-                        </div>
+                        {ev.targetWindow && (
+                          <div className="text-[11px] text-slate-400 pl-4 border-l-2 border-cyan-500/40 mt-0.5 truncate">
+                            🎯 Destino Windows: <span className="text-emerald-300 font-semibold">{ev.targetWindow}</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
