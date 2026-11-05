@@ -1,170 +1,125 @@
 """
 =============================================================================
 PROYECTO TUI-A: Interfaz de Escritorio Tangible Accesible
-Detector de Manos, Palmas y Puños (MediaPipe + Fallback por Color/Contorno)
+Detector de Manos, Palmas y Puños (MediaPipe HandLandmarker Oficial)
 =============================================================================
 Este módulo localiza la presencia de la mano o puño del usuario sobre la mesa.
-Combina la red neuronal de MediaPipe Hands con un algoritmo de respaldo
-basado en segmentación de piel para garantizar robustez en vista cenital.
+Utiliza la red neuronal oficial de MediaPipe HandLandmarker para extraer los
+landmarks anatómicos (muñeca y nudillos), eliminando falsos positivos en mesas.
 =============================================================================
 """
 
+import os
 import cv2
 import numpy as np
 import logging
 
 logger = logging.getLogger("DetectorManos")
 
+# Ruta al modelo oficial de MediaPipe HandLandmarker
+RUTA_MODELO_MANOS = os.path.join(os.path.dirname(__file__), "hand_landmarker.task")
+
 try:
     import mediapipe as mp
-    TIENE_MEDIAPIPE = True
+    from mediapipe.tasks import python
+    from mediapipe.tasks.python import vision
+    TIENE_MEDIAPIPE_TASKS = True
 except ImportError:
-    TIENE_MEDIAPIPE = False
-    logger.warning("MediaPipe no disponible. Se utilizará el detector alternativo por contornos.")
+    TIENE_MEDIAPIPE_TASKS = False
+    logger.warning("MediaPipe Tasks no disponible.")
 
 class DetectorManos:
     """
-    Detecta la posición de manos o puños apoyados sobre la superficie.
+    Detecta la posición anatómica de manos o puños apoyados sobre la superficie.
     """
 
-    def __init__(self, confianza_minima=0.5, max_manos=2):
+    def __init__(self, confianza_minima=0.35, max_manos=2):
         self.confianza_minima = confianza_minima
         self.max_manos = max_manos
+        self.detector_tasks = None
         
-        # 1. Configurar MediaPipe Hands si está disponible la API clásica de solutions
-        self.detector_mp = None
-        if TIENE_MEDIAPIPE and hasattr(mp, 'solutions') and hasattr(mp.solutions, 'hands'):
+        # 1. Configurar MediaPipe Tasks con el modelo oficial hand_landmarker.task
+        if TIENE_MEDIAPIPE_TASKS and os.path.exists(RUTA_MODELO_MANOS):
             try:
-                self.mp_hands = mp.solutions.hands
-                self.detector_mp = self.mp_hands.Hands(
-                    static_image_mode=False,
-                    max_num_hands=self.max_manos,
-                    min_detection_confidence=self.confianza_minima,
-                    min_tracking_confidence=0.5
+                base_options = python.BaseOptions(model_asset_path=RUTA_MODELO_MANOS)
+                options = vision.HandLandmarkerOptions(
+                    base_options=base_options,
+                    num_hands=self.max_manos,
+                    min_hand_detection_confidence=self.confianza_minima,
+                    min_hand_presence_confidence=self.confianza_minima,
+                    min_tracking_confidence=self.confianza_minima
                 )
-                self.mp_draw = mp.solutions.drawing_utils
-                logger.info("MediaPipe Hands inicializado exitosamente.")
+                self.detector_tasks = vision.HandLandmarker.create_from_options(options)
+                logger.info(f"MediaPipe HandLandmarker (Red Neuronal) inicializado exitosamente (conf={self.confianza_minima}).")
             except Exception as e:
-                logger.warning(f"Error al inicializar MediaPipe: {e}. Usando fallback.")
-                self.detector_mp = None
+                logger.warning(f"Error al inicializar HandLandmarker Tasks: {e}")
+                self.detector_tasks = None
         else:
-            logger.info("MediaPipe solutions no disponible en esta versión. Operando con detector de contornos y segmentación de piel de alta precisión.")
+            logger.warning(f"Modelo hand_landmarker.task no encontrado en {RUTA_MODELO_MANOS}.")
 
     def detectar(self, frame_mesa):
         """
-        Detecta manos o puños y devuelve una lista de centroides detectados.
+        Detecta manos reales mediante la red neuronal de MediaPipe y devuelve centroides normalizados.
         
         Retorna:
             lista_manos (list of dict): Cada elemento contiene:
                 - 'centro_px': Tupla (x, y) en píxeles sobre la mesa.
                 - 'centro_norm': Tupla (x_norm, y_norm) entre 0.0 y 1.0.
-                - 'metodo': 'MEDIAPIPE' o 'CONTORNO_PIEL'.
-                - 'landmarks_px': Lista de puntos clave (solo si usó MediaPipe).
+                - 'metodo': 'MEDIAPIPE'
+                - 'landmarks_px': Lista de puntos clave de la mano.
         """
         alto, ancho = frame_mesa.shape[:2]
         manos_detectadas = []
 
-        # Intentar detección con MediaPipe
-        if self.detector_mp is not None:
-            # MediaPipe requiere imagen en espacio de color RGB
-            frame_rgb = cv2.cvtColor(frame_mesa, cv2.COLOR_BGR2RGB)
-            resultados = self.detector_mp.process(frame_rgb)
-            
-            if resultados.multi_hand_landmarks:
-                for hand_landmarks in resultados.multi_hand_landmarks:
-                    # Extraer puntos clave de la palma:
-                    # 0: Muñeca (Wrist)
-                    # 5: Nudillo Índice (Index MCP)
-                    # 9: Nudillo Medio (Middle MCP)
-                    # 17: Nudillo Meñique (Pinky MCP)
-                    indices_palma = [0, 5, 9, 17]
-                    pts_palma_x = [hand_landmarks.landmark[idx].x for idx in indices_palma]
-                    pts_palma_y = [hand_landmarks.landmark[idx].y for idx in indices_palma]
-                    
-                    # El centroide de la palma es el promedio de estos puntos clave
-                    cx_norm = float(np.mean(pts_palma_x))
-                    cy_norm = float(np.mean(pts_palma_y))
-                    
-                    cx_px = int(cx_norm * ancho)
-                    cy_px = int(cy_norm * alto)
-                    
-                    puntos_todos = [(int(lm.x * ancho), int(lm.y * alto)) for lm in hand_landmarks.landmark]
-                    
-                    manos_detectadas.append({
-                        "centro_px": (cx_px, cy_px),
-                        "centro_norm": (cx_norm, cy_norm),
-                        "metodo": "MEDIAPIPE",
-                        "landmarks_px": puntos_todos
-                    })
-
-        # Si MediaPipe no detectó manos (por ejemplo, si el puño está cerrado o la vista
-        # cenital no muestra los dedos extendidos), aplicamos el detector de respaldo
-        if len(manos_detectadas) == 0:
-            manos_respaldo = self._detectar_por_piel_y_masa(frame_mesa)
-            manos_detectadas.extend(manos_respaldo)
+        if self.detector_tasks is not None:
+            try:
+                # MediaPipe requiere imagen en espacio RGB
+                frame_rgb = cv2.cvtColor(frame_mesa, cv2.COLOR_BGR2RGB)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+                
+                # Inferencia con la red neuronal
+                resultado = self.detector_tasks.detect(mp_image)
+                
+                if resultado and resultado.hand_landmarks:
+                    for landmarks in resultado.hand_landmarks:
+                        # Extraer puntos clave de la palma de la mano:
+                        # 0: Muñeca (Wrist)
+                        # 5: Nudillo Índice (Index MCP)
+                        # 9: Nudillo Medio (Middle MCP)
+                        # 17: Nudillo Meñique (Pinky MCP)
+                        indices_palma = [0, 5, 9, 17]
+                        pts_palma_x = [landmarks[idx].x for idx in indices_palma]
+                        pts_palma_y = [landmarks[idx].y for idx in indices_palma]
+                        
+                        # Centroide geométrico de la palma
+                        cx_norm = float(np.mean(pts_palma_x))
+                        cy_norm = float(np.mean(pts_palma_y))
+                        
+                        cx_px = int(cx_norm * ancho)
+                        cy_px = int(cy_norm * alto)
+                        
+                        puntos_todos = [(int(lm.x * ancho), int(lm.y * alto)) for lm in landmarks]
+                        
+                        manos_detectadas.append({
+                            "centro_px": (cx_px, cy_px),
+                            "centro_norm": (cx_norm, cy_norm),
+                            "metodo": "MEDIAPIPE",
+                            "landmarks_px": puntos_todos
+                        })
+            except Exception as e:
+                logger.error(f"Error durante inferencia de MediaPipe: {e}")
 
         return manos_detectadas
 
-    def _detectar_por_piel_y_masa(self, frame_mesa):
-        """
-        Método de respaldo: segmentación de color de piel en espacio HSV y detección
-        de contornos significativos para puño o palma apoyada.
-        """
-        alto, ancho = frame_mesa.shape[:2]
-        manos = []
-        
-        # Convertir a espacio HSV para aislar tonos de piel
-        hsv = cv2.cvtColor(frame_mesa, cv2.COLOR_BGR2HSV)
-        
-        # Rango general de tono de piel humana en HSV
-        bajo_piel = np.array([0, 25, 50], dtype=np.uint8)
-        alto_piel = np.array([25, 255, 255], dtype=np.uint8)
-        
-        mascara = cv2.inRange(hsv, bajo_piel, alto_piel)
-        
-        # Filtro morfológico para eliminar ruido pequeño
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        mascara = cv2.morphologyEx(mascara, cv2.MORPH_OPEN, kernel, iterations=2)
-        mascara = cv2.dilate(mascara, kernel, iterations=2)
-        
-        # Encontrar contornos
-        contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Área mínima en píxeles para considerar una mano/puño apoyado (aprox. 50x50 px)
-        area_minima = 2500
-        
-        for c in contornos:
-            area = cv2.contourArea(c)
-            if area >= area_minima:
-                # Calcular momentos espaciales para obtener el centroide
-                M = cv2.moments(c)
-                if M["m00"] != 0:
-                    cx = int(M["m10"] / M["m00"])
-                    cy = int(M["m01"] / M["m00"])
-                    
-                    norm_x = float(np.clip(cx / ancho, 0.0, 1.0))
-                    norm_y = float(np.clip(cy / alto, 0.0, 1.0))
-                    
-                    manos.append({
-                        "centro_px": (cx, cy),
-                        "centro_norm": (norm_x, norm_y),
-                        "metodo": "CONTORNO_PIEL",
-                        "landmarks_px": []
-                    })
-                    if len(manos) >= self.max_manos:
-                        break
-                        
-        return manos
-
     def dibujar_manos(self, frame_mesa, manos_detectadas):
         """
-        Dibuja los puntos y centroides de la mano sobre el fotograma para depuración visual.
+        Dibuja los puntos anatómicos y centroides de la mano sobre el fotograma para depuración visual.
         """
         lienzo = frame_mesa.copy()
         for m in manos_detectadas:
             cx, cy = m["centro_px"]
             
-            # Dibujar el centroide de la palma o puño
+            # Dibujar el centroide de la palma
             cv2.circle(lienzo, (cx, cy), 10, (0, 140, 255), -1)
             cv2.circle(lienzo, (cx, cy), 16, (0, 200, 255), 2)
             
@@ -173,7 +128,7 @@ class DetectorManos:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 140, 255), 2)
                         
             # Si hay puntos de MediaPipe, dibujar líneas de conexión
-            if m["landmarks_px"]:
+            if m.get("landmarks_px"):
                 for px, py in m["landmarks_px"]:
                     cv2.circle(lienzo, (px, py), 3, (255, 255, 0), -1)
                     

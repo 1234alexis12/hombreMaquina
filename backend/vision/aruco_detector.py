@@ -1,7 +1,7 @@
 """
 =============================================================================
 PROYECTO TUI-A: Interfaz de Escritorio Tangible Accesible
-Detector de Marcadores Fiduciales ArUco
+Detector de Marcadores Fiduciales ArUco (Robusto Multi-Versión)
 =============================================================================
 Este módulo detecta los bloques tangibles con marcadores ArUco sobre
 la superficie de la mesa corregida y extrae sus centroides en coordenadas
@@ -50,34 +50,41 @@ class DetectorArUco:
         gray = cv2.cvtColor(frame_mesa, cv2.COLOR_BGR2GRAY)
         
         # Ejecutar detección según la versión de OpenCV instalada
-        if self.usar_nuevo_detector:
-            esquinas, ids, rechazados = self.detector.detectMarkers(gray)
-        else:
-            esquinas, ids, rechazados = cv2.aruco.detectMarkers(
-                gray, self.diccionario, parameters=self.parametros
-            )
+        try:
+            if self.usar_nuevo_detector:
+                esquinas, ids, rechazados = self.detector.detectMarkers(gray)
+            else:
+                esquinas, ids, rechazados = cv2.aruco.detectMarkers(
+                    gray, self.diccionario, parameters=self.parametros
+                )
+        except Exception:
+            return []
 
         marcadores_detectados = []
         
         if ids is not None and len(ids) > 0:
-            for i in range(len(ids)):
-                id_actual = int(ids[i][0])
-                pts_esquinas = esquinas[i][0]
-                
-                # Calcular el centroide geométrico del marcador ArUco
-                centro_x = int(np.mean(pts_esquinas[:, 0]))
-                centro_y = int(np.mean(pts_esquinas[:, 1]))
-                
-                # Normalizar coordenadas de 0.0 a 1.0 respecto al tamaño de la mesa
-                norm_x = float(np.clip(centro_x / ancho, 0.0, 1.0))
-                norm_y = float(np.clip(centro_y / alto, 0.0, 1.0))
-                
-                marcadores_detectados.append({
-                    "id": id_actual,
-                    "centro_px": (centro_x, centro_y),
-                    "centro_norm": (norm_x, norm_y),
-                    "esquinas": pts_esquinas
-                })
+            ids_planos = np.ravel(ids)
+            for i in range(len(ids_planos)):
+                try:
+                    id_actual = int(ids_planos[i])
+                    pts_esquinas = np.reshape(esquinas[i], (4, 2))
+                    
+                    # Calcular el centroide geométrico del marcador ArUco
+                    centro_x = int(np.mean(pts_esquinas[:, 0]))
+                    centro_y = int(np.mean(pts_esquinas[:, 1]))
+                    
+                    # Normalizar coordenadas de 0.0 a 1.0 respecto al tamaño de la mesa
+                    norm_x = float(np.clip(centro_x / ancho, 0.0, 1.0))
+                    norm_y = float(np.clip(centro_y / alto, 0.0, 1.0))
+                    
+                    marcadores_detectados.append({
+                        "id": id_actual,
+                        "centro_px": (centro_x, centro_y),
+                        "centro_norm": (norm_x, norm_y),
+                        "esquinas": pts_esquinas
+                    })
+                except Exception:
+                    continue
 
         return marcadores_detectados
 
@@ -87,16 +94,19 @@ class DetectorArUco:
         """
         lienzo = frame_mesa.copy()
         for m in marcadores_detectados:
-            pts = np.int32(m["esquinas"]).reshape((-1, 1, 2))
-            # Contorno verde brillante alrededor del marcador
-            cv2.polylines(lienzo, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
-            
-            # Dibujar el centroide con un círculo azul
-            cx, cy = m["centro_px"]
-            cv2.circle(lienzo, (cx, cy), 5, (255, 0, 0), -1)
-            
-            # Etiqueta con el ID del marcador
-            cv2.putText(lienzo, f"ArUco ID:{m['id']}", (cx - 30, cy - 15),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
-                        
+            try:
+                pts = np.int32(m["esquinas"]).reshape((-1, 1, 2))
+                # Contorno verde brillante alrededor del marcador
+                cv2.polylines(lienzo, [pts], isClosed=True, color=(0, 255, 0), thickness=2)
+                
+                # Dibujar el centroide con un círculo azul
+                cx, cy = m["centro_px"]
+                cv2.circle(lienzo, (cx, cy), 5, (255, 0, 0), -1)
+                
+                # Etiqueta con el ID del marcador
+                cv2.putText(lienzo, f"ArUco ID:{m['id']}", (cx - 30, cy - 15),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+            except Exception:
+                continue
+                            
         return lienzo

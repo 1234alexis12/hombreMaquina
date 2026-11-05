@@ -10,9 +10,9 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Hand, Box, CheckCircle2, Clock, Zap, Lock, Sparkles } from 'lucide-react';
+import { Hand, Box, CheckCircle2, Clock, Zap, Lock, Sparkles, Play } from 'lucide-react';
 
-export function ZoneCard({ zone, onSoundProgress, onSoundTrigger, dwellTargetMs = 800 }) {
+export function ZoneCard({ zone, onSoundProgress, onSoundTrigger, onTestTrigger, dwellTargetMs = 800 }) {
   const { id, name, label, key, state, progress, source, color } = zone;
   const [animandoDisparo, setAnimandoDisparo] = useState(false);
 
@@ -107,7 +107,7 @@ export function ZoneCard({ zone, onSoundProgress, onSoundTrigger, dwellTargetMs 
         </div>
 
         {/* Badge del Estímulo / Sensor Detectado */}
-        <div className="flex items-center">
+        <div className="flex items-center gap-2">
           {source === 'ARUCO' ? (
             <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 shadow-sm shadow-cyan-950">
               <Box className="w-3.5 h-3.5 text-cyan-400" />
@@ -123,6 +123,19 @@ export function ZoneCard({ zone, onSoundProgress, onSoundTrigger, dwellTargetMs 
               <span>En Reposo</span>
             </span>
           )}
+
+          {/* Botón rápido para probar disparo directo en Windows */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onTestTrigger?.(key);
+            }}
+            title={`Simular pulsación real de '${key}' en Windows`}
+            className="flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-mono font-bold bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-cyan-300 border border-slate-700 hover:border-cyan-400 transition"
+          >
+            <Play className="w-2.5 h-2.5 fill-current" />
+            <span>Probar</span>
+          </button>
         </div>
       </div>
 

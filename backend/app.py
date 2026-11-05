@@ -1,54 +1,52 @@
 """
 =============================================================================
 PROYECTO TUI-A: Interfaz de Escritorio Tangible Accesible
-Servidor Principal FastAPI con WebSockets y Transmisión de Telemetría
+Servidor Central de Aplicación (FastAPI + WebSockets + Streaming MJPEG)
 =============================================================================
-Este servidor ejecuta el bucle de visión artificial en tiempo real, administra
-las conexiones WebSocket con la interfaz de usuario en React, transmite el
-progreso del Dwell Time a 30 FPS y expone la transmisión de video MJPEG.
+Este script coordina los subsistemas de visión artificial (MediaPipe HandLandmarker,
+detección de ArUcos y corrección de perspectiva cenital), la máquina de estados
+de Dwell Time y la emulación de pulsaciones nativas en el Sistema Operativo Windows.
 =============================================================================
 """
 
 import os
-import time
+import sys
 import json
+import time
 import asyncio
 import logging
-import cv2
 from typing import List
+
+import cv2
+import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-# Importar módulos propios del backend
+# Añadir el directorio raíz del backend al path de Python
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from vision.camera import CamaraCenital
 from vision.aruco_detector import DetectorArUco
 from vision.hand_detector import DetectorManos
 from vision.zone_manager import GestorZonas
 from keyboard_controller import teclado
 
-# Configuración del registro de eventos
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("ServidorTUI-A")
+# Configuración del sistema de registro (Logging)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("TUI-A_Servidor")
 
-RUTA_CONFIG = os.path.join(os.path.dirname(__file__), "config.json")
+# Inicialización de la aplicación FastAPI
+app = FastAPI(
+    title="TUI-A Backend API",
+    description="Motor de visión y accesibilidad tangible para el proyecto Hombre-Máquina",
+    version="1.2.0"
+)
 
-def cargar_configuracion():
-    """Lee el archivo de configuración JSON del sistema."""
-    if os.path.exists(RUTA_CONFIG):
-        with open(RUTA_CONFIG, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-def guardar_configuracion(config_dict):
-    """Guarda las modificaciones en el archivo JSON."""
-    with open(RUTA_CONFIG, "w", encoding="utf-8") as f:
-        json.dump(config_dict, f, indent=2, ensure_ascii=False)
-
-# Inicializar FastAPI
-app = FastAPI(title="TUI-A Backend API", version="1.0.0")
-
-# Habilitar CORS para permitir peticiones desde Vite / React (localhost:5173)
+# Habilitar CORS para permitir peticiones desde Vite / React
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -57,26 +55,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+RUTA_CONFIG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+def deep_merge_dict(dict_base: dict, dict_nuevo: dict) -> dict:
+    """Combina recursivamente dos diccionarios sin sobreescribir claves anidadas."""
+    for k, v in dict_nuevo.items():
+        if isinstance(v, dict) and k in dict_base and isinstance(dict_base[k], dict):
+            deep_merge_dict(dict_base[k], v)
+        else:
+            dict_base[k] = v
+    return dict_base
+
+def cargar_configuracion():
+    """Carga los parámetros del archivo JSON o genera configuración por defecto."""
+    if os.path.exists(RUTA_CONFIG):
+        with open(RUTA_CONFIG, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def guardar_configuracion(datos):
+    """Persiste la configuración actualizada en el disco."""
+    with open(RUTA_CONFIG, "w", encoding="utf-8") as f:
+        json.dump(datos, f, indent=2)
+
 # -----------------------------------------------------------------------------
-# GESTOR DE CONEXIONES WEBSOCKET
+# ADMINISTRADOR DE CONEXIONES WEBSOCKET
 # -----------------------------------------------------------------------------
 class AdministradorConexiones:
-    """Gestiona múltiples clientes conectados vía WebSocket."""
+    """Gestiona los clientes WebSocket conectados para emitir telemetría en tiempo real."""
     def __init__(self):
         self.conexiones_activas: List[WebSocket] = []
 
     async def conectar(self, websocket: WebSocket):
         await websocket.accept()
         self.conexiones_activas.append(websocket)
-        logger.info(f"Cliente WebSocket conectado. Total activos: {len(self.conexiones_activas)}")
+        logger.info(f"Cliente conectado. Total clientes: {len(self.conexiones_activas)}")
 
     def desconectar(self, websocket: WebSocket):
         if websocket in self.conexiones_activas:
             self.conexiones_activas.remove(websocket)
-            logger.info(f"Cliente WebSocket desconectado. Total activos: {len(self.conexiones_activas)}")
+            logger.info(f"Cliente desconectado. Total restantes: {len(self.conexiones_activas)}")
 
     async def transmitir_json(self, datos: dict):
-        """Envía un payload JSON a todos los clientes web conectados."""
         for conexion in list(self.conexiones_activas):
             try:
                 await conexion.send_json(datos)
@@ -93,7 +113,6 @@ cam_cfg = config_actual.get("camera", {})
 inter_cfg = config_actual.get("interaction", {})
 zonas_cfg = config_actual.get("zones", [])
 
-# Instanciar subsistemas de visión (soporta webcam USB, virtual DroidCam o URL de celular)
 fuente_inicial = cam_cfg.get("source", cam_cfg.get("index", 0))
 camara = CamaraCenital(
     fuente_camara=fuente_inicial,
@@ -105,7 +124,7 @@ camara = CamaraCenital(
 )
 
 detector_aruco = DetectorArUco()
-detector_manos = DetectorManos(confianza_minima=inter_cfg.get("min_detection_confidence", 0.5))
+detector_manos = DetectorManos(confianza_minima=inter_cfg.get("min_detection_confidence", 0.35))
 
 ultimo_evento_disparo = None
 
@@ -117,6 +136,7 @@ def al_disparar_tecla(tecla):
         "key": tecla,
         "timestamp": time.time()
     }
+    logger.info(f"[DISPARO REGISTRADO] Tecla '{tecla}' enviada al sistema operativo.")
 
 gestor_zonas = GestorZonas(
     lista_config_zonas=zonas_cfg,
@@ -125,7 +145,6 @@ gestor_zonas = GestorZonas(
     callback_disparo=al_disparar_tecla
 )
 
-# Variable para almacenar el fotograma anotado para streaming MJPEG
 ultimo_frame_anotado = None
 
 # -----------------------------------------------------------------------------
@@ -146,54 +165,58 @@ async def bucle_vision():
     while True:
         tiempo_inicio_ciclo = time.time()
         
-        # 1. Capturar fotograma y obtener la vista aplanada ortogonal
-        ret, frame_crudo, frame_mesa = camara.leer_frame()
-        
-        if ret and frame_mesa is not None:
-            # 2. Detección de marcadores ArUco (bloques tangibles)
-            arucos = detector_aruco.detectar(frame_mesa)
+        try:
+            # 1. Capturar fotograma y obtener la vista aplanada ortogonal
+            ret, frame_crudo, frame_mesa = camara.leer_frame()
             
-            # 3. Detección de manos/palmas/puños (MediaPipe + fallback piel)
-            manos = detector_manos.detectar(frame_mesa)
-            
-            # 4. Actualizar máquina de estados de las zonas interactivas
-            estados_zonas = gestor_zonas.actualizar(arucos, manos)
-            
-            # 5. Dibujar anotaciones visuales sobre el fotograma aplanado
-            frame_debug = detector_aruco.dibujar_marcadores(frame_mesa, arucos)
-            frame_debug = detector_manos.dibujar_manos(frame_debug, manos)
-            frame_debug = gestor_zonas.dibujar_zonas(frame_debug)
-            
-            ultimo_frame_anotado = frame_debug
-
-            # 6. Cálculo de FPS reales
-            fps_contador += 1
-            if time.time() - ultimo_tiempo_fps >= 1.0:
-                fps_actual = round(fps_contador / (time.time() - ultimo_tiempo_fps), 1)
-                fps_contador = 0
-                ultimo_tiempo_fps = time.time()
-
-            # 7. Transmisión del paquete de telemetría a los clientes web
-            if len(admin_ws.conexiones_activas) > 0:
-                payload = {
-                    "type": "telemetry",
-                    "timestamp": round(time.time(), 3),
-                    "fps": fps_actual,
-                    "zones": estados_zonas,
-                    "dwell_target_ms": gestor_zonas.dwell_time_segundos * 1000,
-                    "active_elements": {
-                        "arucos_count": len(arucos),
-                        "hands_count": len(manos)
-                    },
-                    "last_trigger": ultimo_evento_disparo
-                }
-                await admin_ws.transmitir_json(payload)
+            if ret and frame_mesa is not None:
+                # 2. Detección de marcadores ArUco (bloques tangibles)
+                arucos = detector_aruco.detectar(frame_mesa)
                 
-                # Limpiar el evento de disparo luego de transmitirlo
-                if ultimo_evento_disparo is not None:
-                    ultimo_evento_disparo = None
+                # 3. Detección de manos/palmas/puños (MediaPipe HandLandmarker)
+                manos = detector_manos.detectar(frame_mesa)
+                
+                # 4. Actualizar máquina de estados de las zonas interactivas
+                estados_zonas = gestor_zonas.actualizar(arucos, manos)
+                
+                # 5. Dibujar anotaciones visuales sobre el fotograma aplanado
+                frame_debug = detector_aruco.dibujar_marcadores(frame_mesa, arucos)
+                frame_debug = detector_manos.dibujar_manos(frame_debug, manos)
+                frame_debug = gestor_zonas.dibujar_zonas(frame_debug)
+                
+                ultimo_frame_anotado = frame_debug
 
-        # Controlar la tasa de actualización a ~30-40 FPS para no saturar CPU
+                # 6. Cálculo de FPS reales
+                fps_contador += 1
+                if time.time() - ultimo_tiempo_fps >= 1.0:
+                    fps_actual = round(fps_contador / (time.time() - ultimo_tiempo_fps), 1)
+                    fps_contador = 0
+                    ultimo_tiempo_fps = time.time()
+
+                # 7. Transmisión del paquete de telemetría a los clientes web
+                if len(admin_ws.conexiones_activas) > 0:
+                    payload = {
+                        "type": "telemetry",
+                        "timestamp": round(time.time(), 3),
+                        "fps": fps_actual,
+                        "zones": estados_zonas,
+                        "dwell_target_ms": gestor_zonas.dwell_time_segundos * 1000,
+                        "active_elements": {
+                            "arucos_count": len(arucos),
+                            "hands_count": len(manos)
+                        },
+                        "last_trigger": ultimo_evento_disparo
+                    }
+                    await admin_ws.transmitir_json(payload)
+                    
+                    # Limpiar el evento de disparo luego de transmitirlo
+                    if ultimo_evento_disparo is not None:
+                        ultimo_evento_disparo = None
+
+        except Exception as e:
+            logger.error(f"Error en bucle de vision: {e}")
+
+        # Controlar la tasa de actualización a ~30-35 FPS para optimizar CPU
         tiempo_ciclo = time.time() - tiempo_inicio_ciclo
         tiempo_espera = max(0.001, (1.0 / 35.0) - tiempo_ciclo)
         await asyncio.sleep(tiempo_espera)
@@ -213,9 +236,9 @@ def obtener_configuracion():
 
 @app.post("/api/config")
 async def actualizar_configuracion(nuevos_datos: dict):
-    """Actualiza y persiste la configuración (dwell time, teclas, zonas)."""
+    """Actualiza y persiste la configuración usando fusión recursiva segura."""
     global config_actual
-    config_actual.update(nuevos_datos)
+    config_actual = deep_merge_dict(config_actual, nuevos_datos)
     guardar_configuracion(config_actual)
     
     # Aplicar cambios en caliente a la cámara si se modificó la fuente
@@ -232,6 +255,12 @@ async def actualizar_configuracion(nuevos_datos: dict):
         gestor_zonas.cooldown_segundos = cooldown_ms / 1000.0
         
     return {"status": "ok", "message": "Configuración guardada exitosamente"}
+
+@app.post("/api/trigger-test/{tecla}")
+async def disparar_tecla_prueba(tecla: str):
+    """Permite probar de inmediato la emulación de teclado real en Windows desde la interfaz web."""
+    al_disparar_tecla(tecla)
+    return {"status": "ok", "tecla": tecla, "message": f"Tecla '{tecla}' disparada exitosamente al SO Windows"}
 
 @app.get("/video_feed")
 def transmision_video_mjpeg():
@@ -260,7 +289,6 @@ async def punto_enlace_websocket(websocket: WebSocket):
     await admin_ws.conectar(websocket)
     try:
         while True:
-            # Escuchar mensajes enviados desde el frontend (comandos o cambios de dwell)
             mensaje_texto = await websocket.receive_text()
             try:
                 mensaje = json.loads(mensaje_texto)
@@ -268,6 +296,10 @@ async def punto_enlace_websocket(websocket: WebSocket):
                     nuevo_dwell = float(mensaje.get("value", 800))
                     gestor_zonas.dwell_time_segundos = nuevo_dwell / 1000.0
                     logger.info(f"Dwell Time actualizado a {nuevo_dwell} ms")
+                elif mensaje.get("type") == "test_trigger":
+                    tecla_test = mensaje.get("key", "space")
+                    al_disparar_tecla(tecla_test)
+                    logger.info(f"Prueba manual de disparo: {tecla_test}")
             except Exception as e:
                 logger.error(f"Error procesando mensaje WebSocket entrante: {e}")
     except WebSocketDisconnect:

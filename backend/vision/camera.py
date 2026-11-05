@@ -94,6 +94,9 @@ class CamaraCenital:
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.ancho)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.alto)
             logger.info(f"Cámara/Celular conectado exitosamente a: {self.fuente}")
+            # Descartar primeros 8 fotogramas para estabilizar auto-exposición y brillo del sensor USB
+            for _ in range(8):
+                self.cap.read()
         else:
             logger.warning(f"No se pudo conectar a la fuente {self.fuente}. Modo sintético activo.")
 

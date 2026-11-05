@@ -35,7 +35,11 @@ import {
   Info,
   RefreshCw,
   Box,
-  Hand
+  Hand,
+  Terminal,
+  CheckCircle2,
+  Trash2,
+  Play
 } from 'lucide-react';
 
 export default function App() {
@@ -58,6 +62,29 @@ export default function App() {
   const [historialDisparos, setHistorialDisparos] = useState([]);
   const [claveStream, setClaveStream] = useState(Date.now());
   const [errorCargaCamara, setErrorCargaCamara] = useState(false);
+
+  // Estados del Centro de Pruebas y Detección de Teclas Físicas de Windows
+  const [ultimaTeclaFisica, setUltimaTeclaFisica] = useState(null);
+  const [textoSandbox, setTextoSandbox] = useState('');
+
+  // Escuchar eventos físicos de teclado capturados por Windows en el navegador
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ignorar teclas del navegador como F5, F12
+      if (e.key === 'F5' || e.key === 'F12') return;
+
+      const etiqueta = e.code === 'Space' ? 'ESPACIO' : (e.code === 'Enter' ? 'ENTER' : (e.code === 'Escape' ? 'ESC' : e.key));
+      setUltimaTeclaFisica({
+        etiqueta,
+        code: e.code,
+        keyCode: e.keyCode,
+        hora: new Date().toLocaleTimeString()
+      });
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Cambiar fuente de cámara directamente en caliente
   const cambiarFuenteCamaraDirecta = async (nuevaFuente) => {
@@ -112,6 +139,15 @@ export default function App() {
   const manejarCambioDwell = (nuevoValor) => {
     setDwellTimeMs(nuevoValor);
     enviarMensaje({ type: 'set_dwell_time', value: nuevoValor });
+  };
+
+  // Probar una pulsación directa en Windows mediante API
+  const dispararPruebaManual = async (tecla) => {
+    try {
+      await fetch(`http://localhost:8000/api/trigger-test/${tecla}`, { method: 'POST' });
+    } catch (e) {
+      console.error('Error probando tecla:', e);
+    }
   };
 
   const zonas = telemetria?.zones || [];
@@ -200,10 +236,10 @@ export default function App() {
             {/* Alternar Sonido */}
             <button
               onClick={() => setSonidoHabilitado(!sonidoHabilitado)}
-              title={sonidoHabilitado ? 'Silenciar Retroalimentación Auditiva' : 'Activar Retroalimentación Auditiva'}
-              className={`p-2 rounded-xl border text-xs font-medium transition ${
+              title={sonidoHabilitado ? 'Silenciar síntesis de audio' : 'Activar retroalimentación de audio'}
+              className={`p-2 rounded-xl border transition ${
                 sonidoHabilitado
-                  ? 'bg-slate-800/90 border-slate-700 text-emerald-400 hover:bg-slate-700'
+                  ? 'bg-slate-800/80 border-slate-700 text-cyan-400 hover:bg-slate-700'
                   : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300'
               }`}
             >
@@ -213,29 +249,34 @@ export default function App() {
             {/* Alternar Cámara */}
             <button
               onClick={() => setMostrarCamara(!mostrarCamara)}
-              title={mostrarCamara ? 'Ocultar Visión Cenital' : 'Mostrar Visión Cenital'}
-              className="p-2 rounded-xl bg-slate-800/90 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700 transition"
+              title={mostrarCamara ? 'Ocultar panel de cámara' : 'Mostrar panel de cámara'}
+              className={`p-2 rounded-xl border transition ${
+                mostrarCamara
+                  ? 'bg-slate-800/80 border-slate-700 text-cyan-400 hover:bg-slate-700'
+                  : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300'
+              }`}
             >
-              {mostrarCamara ? <Eye className="w-4 h-4 text-cyan-400" /> : <EyeOff className="w-4 h-4 text-slate-500" />}
+              {mostrarCamara ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
             </button>
 
-            {/* Botón de Configuración Modal */}
+            {/* Botón de Ajustes */}
             <button
               onClick={() => setModalConfigAbierto(true)}
-              className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition flex items-center gap-1.5 text-xs font-black shadow-md shadow-cyan-500/20"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 shadow-sm transition"
             >
-              <Sliders className="w-3.5 h-3.5" />
+              <Sliders className="w-3.5 h-3.5 text-cyan-400" />
               <span>Ajustes</span>
             </button>
 
           </div>
+
         </div>
       </header>
 
       {/* =====================================================================
-          CONTENIDO PRINCIPAL (LAYOUT COCKPIT RESPONSIVE)
+          CUERPO CENTRAL DE LA APLICACIÓN
          ===================================================================== */}
-      <main className="max-w-[1600px] mx-auto w-full px-4 sm:px-6 py-5 flex-1">
+      <main className="max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-6 flex-1">
         
         {/* PESTAÑA 1: VISTA DE LA SUPERFICIE DE INTERACCIÓN */}
         {pestañaActiva === 'interfaz' && (
@@ -276,6 +317,7 @@ export default function App() {
                       dwellTargetMs={dwellTimeMs}
                       onSoundProgress={reproducirProgresoDwell}
                       onSoundTrigger={reproducirConfirmacionDisparo}
+                      onTestTrigger={dispararPruebaManual}
                     />
                   ))
                 ) : (
@@ -355,6 +397,75 @@ export default function App() {
                 </div>
               </div>
 
+              {/* CENTRO DE PRUEBAS EN VIVO: SANDBOX INTERACTIVO Y DETECTOR DE TECLAS REALES */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900/90 to-slate-950 border border-slate-800 shadow-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-bold text-slate-200">
+                      Sandbox de Escritura y Verificación de Teclas Físicas (Windows)
+                    </span>
+                  </div>
+
+                  {/* Monitor en tiempo real de tecla recibida por el sistema operativo */}
+                  {ultimaTeclaFisica ? (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-300 text-xs font-mono animate-fade-in">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Windows detectó: <strong>[{ultimaTeclaFisica.etiqueta}]</strong> ({ultimaTeclaFisica.hora})</span>
+                    </div>
+                  ) : (
+                    <span className="text-[11px] font-mono text-slate-500">
+                      Esperando pulsación del SO...
+                    </span>
+                  )}
+                </div>
+
+                {/* Área de texto interactiva para probar escritura con el sistema */}
+                <div className="relative">
+                  <textarea
+                    rows={2}
+                    value={textoSandbox}
+                    onChange={(e) => setTextoSandbox(e.target.value)}
+                    placeholder="Haz clic aquí dentro para probar. Al apoyar tu mano o ficha en las zonas, los [ESPACIOS] o [ENTER] escribirán directamente en este cuadro..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/90 border border-slate-800 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 text-xs font-mono text-slate-200 placeholder:text-slate-600 outline-none resize-none transition"
+                  />
+                  {textoSandbox && (
+                    <button
+                      onClick={() => setTextoSandbox('')}
+                      title="Limpiar texto"
+                      className="absolute right-2.5 bottom-3.5 p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Botones de prueba directa para validar inyección en Windows */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/60 text-[11px]">
+                  <span className="text-slate-400 font-mono">Inyección manual:</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => dispararPruebaManual('space')}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 font-mono font-bold text-cyan-300 border border-slate-700 transition"
+                    >
+                      Emular [ESPACIO]
+                    </button>
+                    <button
+                      onClick={() => dispararPruebaManual('enter')}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-emerald-500 hover:text-slate-950 font-mono font-bold text-emerald-300 border border-slate-700 transition"
+                    >
+                      Emular [ENTER]
+                    </button>
+                    <button
+                      onClick={() => dispararPruebaManual('esc')}
+                      className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-purple-500 hover:text-slate-950 font-mono font-bold text-purple-300 border border-slate-700 transition"
+                    >
+                      Emular [ESC]
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Registro de Actividad y Auditoría en Vivo */}
               <div className="p-4 rounded-2xl bg-slate-900/50 border border-slate-800/80 space-y-2.5">
                 <div className="flex items-center justify-between text-xs">
@@ -418,7 +529,7 @@ export default function App() {
                             ? 'bg-cyan-500 text-slate-950 font-bold'
                             : 'bg-slate-800 text-slate-400 hover:text-white'
                         }`}
-                        title="Cámara 0 (USB Principal)"
+                        title="Cámara 0 (Webcam USB Física)"
                       >
                         0 (USB)
                       </button>
@@ -429,9 +540,9 @@ export default function App() {
                             ? 'bg-cyan-500 text-slate-950 font-bold'
                             : 'bg-slate-800 text-slate-400 hover:text-white'
                         }`}
-                        title="Cámara 1 (Secundaria / OBS)"
+                        title="Cámara 1 (OBS Virtual Camera)"
                       >
-                        1 (Secundaria)
+                        1 (OBS)
                       </button>
                       <button
                         onClick={() => {
@@ -464,7 +575,7 @@ export default function App() {
                           Reconectando a la fuente {fuenteCamara}...
                         </span>
                         <p className="text-[11px] text-slate-500 max-w-xs">
-                          Verifica que el cable USB esté conectado o prueba cambiar entre Cam 0 y Cam 1 arriba.
+                          Verifica que el cable USB esté conectado o prueba alternar entre Cam 0 y Cam 1 arriba.
                         </p>
                         <button
                           onClick={() => {
@@ -479,85 +590,78 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Retículas ópticas esquineras para dar aspecto de instrumento calibrado */}
-                    <div className="absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-cyan-400/70 pointer-events-none" />
-                    <div className="absolute top-2 right-2 w-3 h-3 border-t-2 border-r-2 border-cyan-400/70 pointer-events-none" />
-                    <div className="absolute bottom-2 left-2 w-3 h-3 border-b-2 border-l-2 border-cyan-400/70 pointer-events-none" />
-                    <div className="absolute bottom-2 right-2 w-3 h-3 border-b-2 border-r-2 border-cyan-400/70 pointer-events-none" />
+                    {/* HUD Superpuesto en el Video */}
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-950/80 backdrop-blur-md border border-slate-700/60 text-[10px] font-mono text-cyan-300">
+                      <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
+                      <span>{fpsActual} FPS • Homografía Activa</span>
+                    </div>
 
-                    {/* HUD Badge en esquina inferior */}
-                    <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur-md text-[10px] font-mono text-slate-300 border border-white/10">
-                      Homografía Activa • Cam {fuenteCamara}
+                    <div className="absolute bottom-2.5 right-2.5 flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-slate-800 text-[10px] font-mono text-slate-300 flex items-center gap-1">
+                        <Box className="w-3 h-3 text-cyan-400" />
+                        <span>ArUco: {elementos.arucos_count}</span>
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur-md border border-slate-800 text-[10px] font-mono text-slate-300 flex items-center gap-1">
+                        <Hand className="w-3 h-3 text-amber-400" />
+                        <span>Manos: {elementos.hands_count}</span>
+                      </span>
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-slate-400 text-center">
-                    Cámara corregida mediante homografía de 4 puntos. Puedes recalibrar con <code className="text-cyan-300 font-mono">python backend/calibration.py</code>
+                  <p className="text-[11px] text-slate-400 leading-relaxed px-1">
+                    Vista ortogonal aplanada mediante matriz de homografía. Las zonas azul (ESPACIO) y verde (ENTER) son proyectadas sobre el plano de trabajo.
                   </p>
                 </div>
               ) : (
-                <div className="p-8 text-center rounded-3xl bg-slate-900/40 border border-slate-800">
-                  <Camera className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                  <p className="text-xs text-slate-400">Transmisión de cámara oculta para ahorrar recursos.</p>
+                <div className="p-6 rounded-3xl bg-slate-900/40 border border-dashed border-slate-800 text-center space-y-2">
+                  <EyeOff className="w-6 h-6 text-slate-500 mx-auto" />
+                  <p className="text-xs text-slate-400">Panel de visión cenital minimizado.</p>
                   <button
                     onClick={() => setMostrarCamara(true)}
-                    className="mt-3 px-3 py-1 rounded-xl text-xs font-bold bg-slate-800 text-cyan-300 hover:bg-slate-700"
+                    className="text-xs font-bold text-cyan-400 hover:underline"
                   >
-                    Mostrar Cámara
+                    Restaurar visor
                   </button>
                 </div>
               )}
 
-              {/* Panel de Sensores y Diagnóstico de Visión */}
-              <div className="p-4 rounded-3xl bg-slate-900/70 border border-slate-800 space-y-3">
-                <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                  <Radio className="w-4 h-4 text-cyan-400" />
-                  <span>Detecciones y Sensores Activos sobre la Mesa</span>
+              {/* Panel de Telemetría y Salud del Sistema */}
+              <div className="p-4 rounded-3xl bg-slate-900/60 border border-slate-800 shadow-lg space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
+                  <Activity className="w-4 h-4 text-cyan-400" />
+                  <span>Telemetría de Percepción Sensorial</span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Tarjeta ArUco */}
-                  <div className="p-3 rounded-2xl bg-slate-800/50 border border-slate-700/50 space-y-1">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <Box className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Marcadores ArUco</span>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-mono">Bloques ArUco</span>
+                      <p className="text-lg font-black text-white">{elementos.arucos_count}</p>
                     </div>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-2xl font-black text-cyan-300 font-mono">
-                        {elementos.arucos_count}
-                      </span>
-                      <span className="text-[11px] text-slate-400 font-mono">DICT_4X4_50</span>
-                    </div>
+                    <Box className="w-6 h-6 text-cyan-500/50" />
                   </div>
 
-                  {/* Tarjeta Manos */}
-                  <div className="p-3 rounded-2xl bg-slate-800/50 border border-slate-700/50 space-y-1">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-400">
-                      <Hand className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Manos / Puños</span>
+                  <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] text-slate-400 uppercase font-mono">Manos / Puños</span>
+                      <p className="text-lg font-black text-white">{elementos.hands_count}</p>
                     </div>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="text-2xl font-black text-amber-300 font-mono">
-                        {elementos.hands_count}
-                      </span>
-                      <span className="text-[11px] text-slate-400 font-mono">MediaPipe/Piel</span>
-                    </div>
+                    <Hand className="w-6 h-6 text-amber-500/50" />
                   </div>
                 </div>
 
-                {/* Resumen del Pipeline Tecnológico */}
-                <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 space-y-1">
-                  <div className="flex justify-between">
-                    <span>Inyección OS:</span>
-                    <strong className="text-slate-200 font-mono">Pynput Threaded</strong>
+                <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1.5 text-xs font-mono">
+                  <div className="flex justify-between text-slate-400 text-[11px]">
+                    <span>Frecuencia de Muestreo</span>
+                    <span className="text-cyan-300 font-bold">{fpsActual} Hz</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Comunicación:</span>
-                    <strong className="text-slate-200 font-mono">FastAPI WebSocket (30 FPS)</strong>
+                  <div className="flex justify-between text-slate-400 text-[11px]">
+                    <span>Controlador de Teclado</span>
+                    <span className="text-emerald-400 font-bold">Nativo Windows (user32 + pynput)</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Audio Feedback:</span>
-                    <strong className="text-slate-200 font-mono">Web Audio API Nativa</strong>
+                  <div className="flex justify-between text-slate-400 text-[11px]">
+                    <span>Red Neuronal MediaPipe</span>
+                    <span className="text-purple-400 font-bold">HandLandmarker v2</span>
                   </div>
                 </div>
               </div>
@@ -567,44 +671,47 @@ export default function App() {
           </div>
         )}
 
-        {/* PESTAÑA 2: PROTOCOLO EXPERIMENTAL (SUS / NASA-TLX) */}
+        {/* PESTAÑA 2: PROTOCOLO DE EVALUACIÓN DE USABILIDAD (HCI) */}
         {pestañaActiva === 'experimento' && (
-          <div className="max-w-6xl mx-auto">
-            <UsabilityTest 
-              zones={zonas} 
-              lastTrigger={telemetria?.last_trigger} 
-            />
+          <div className="max-w-4xl mx-auto">
+            <UsabilityTest />
           </div>
         )}
 
       </main>
 
       {/* =====================================================================
-          PIE DE PÁGINA PROFESIONAL
+          FOOTER INSTITUCIONAL / ACADÉMICO
          ===================================================================== */}
-      <footer className="border-t border-slate-800/80 bg-slate-950/90 px-6 py-3.5 text-center text-xs text-slate-500">
-        <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-2">
-          <span>
-            Proyecto TUI-A • Interacción Humano-Computadora (HCI / IHM)
-          </span>
-          <span className="text-slate-400 font-medium">
-            Autores: Bryan Mango Ticllahuanaco & Anthony Luque Guzmán
-          </span>
+      <footer className="border-t border-slate-900 bg-slate-950 px-6 py-4 mt-8">
+        <div className="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-cyan-500" />
+            <span className="font-semibold text-slate-400">
+              Proyecto TUI-A (Avance 2)
+            </span>
+            <span>•</span>
+            <span>Interacción Hombre-Máquina (IHM)</span>
+          </div>
+
+          <div className="flex items-center gap-4 text-[11px] font-mono">
+            <span>Autores: Bryan Mango & Anthony Luque</span>
+            <span>•</span>
+            <span className="text-cyan-400">Repo: antholll/hombreMaquina</span>
+          </div>
         </div>
       </footer>
 
-      {/* =====================================================================
-          MODAL DE CONFIGURACIÓN
-         ===================================================================== */}
+      {/* Modal de Configuración */}
       <SettingsModal
         abierto={modalConfigAbierto}
         alCerrar={() => setModalConfigAbierto(false)}
         dwellTimeMs={dwellTimeMs}
-        alCambiarDwellTime={manejarCambioDwell}
-        cooldownMs={cooldownMs}
-        alCambiarCooldown={setCooldownMs}
+        alCambiarDwellTime={setDwellTimeMs}
         sonidoHabilitado={sonidoHabilitado}
         alCambiarSonido={setSonidoHabilitado}
+        cooldownMs={cooldownMs}
+        alCambiarCooldown={setCooldownMs}
         fuenteCamaraInicial={fuenteCamara}
       />
 
