@@ -175,14 +175,21 @@ export function SettingsModal({
                 onClick={() => setFuenteCamara('0')}
                 className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
               >
-                Webcam Principal (0)
+                Laptop Integrada (0)
               </button>
               <button
                 type="button"
                 onClick={() => setFuenteCamara('1')}
                 className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
               >
-                DroidCam/Iriun USB (1)
+                OBS / Virtual (1)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFuenteCamara('2')}
+                className="px-2.5 py-1 rounded-lg bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-700 font-bold"
+              >
+                Cámara USB Externa (2)
               </button>
               <button
                 type="button"

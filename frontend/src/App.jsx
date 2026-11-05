@@ -537,9 +537,9 @@ export default function App() {
                             ? 'bg-cyan-500 text-slate-950 font-bold'
                             : 'bg-slate-800 text-slate-400 hover:text-white'
                         }`}
-                        title="Cámara 0 (Webcam USB Física)"
+                        title="Cámara 0 (Webcam Integrada de la Laptop)"
                       >
-                        0 (USB)
+                        0 (Laptop)
                       </button>
                       <button
                         onClick={() => cambiarFuenteCamaraDirecta('1')}
@@ -551,6 +551,17 @@ export default function App() {
                         title="Cámara 1 (OBS Virtual Camera)"
                       >
                         1 (OBS)
+                      </button>
+                      <button
+                        onClick={() => cambiarFuenteCamaraDirecta('2')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono transition ${
+                          fuenteCamara === '2'
+                            ? 'bg-cyan-500 text-slate-950 font-bold'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                        title="Cámara 2 (Webcam USB Externa Conectada)"
+                      >
+                        2 (USB Externa)
                       </button>
                       <button
                         onClick={() => {
