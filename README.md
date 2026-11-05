@@ -5,6 +5,16 @@
 > **Integrantes:**  
 > - Bryan Mango Ticllahuanaco  
 > - Anthony Luque Guzmán  
+>  
+> **Versión Actual:** 1.0-avance2 (MVP: Superficie Táctil por Detección de Manos)
+
+---
+
+### 📌 Alcance de la Versión Actual (Avance 2 - MVP) vs Expansión ArUco
+* **Versión Actual Entregable (Avance 2 - MVP):**  
+  Implementación central basada en **visión cenital y seguimiento anatómico de manos/palmas/puños** mediante la red neuronal **MediaPipe HandLandmarker**. Transforma la mesa en 2 macro-zonas táctiles calibradas para motricidad gruesa (**ZONA 1: ESPACIO** y **ZONA 2: ENTER**), con temporizador **Dwell Time** (prevención de falsas activaciones / Midas Touch) e inyección física de teclas a bajo nivel en Windows (SendInput con hardware scan codes).
+* **Hoja de Ruta (Avance 3 - Expansión Tangible ArUco):**  
+  El motor de visión ya incluye el detector de marcadores fiduciales ArUco (DICT_4X4_50). En la siguiente iteración se incorporará la **tabla/fichas físicas ArUco** para expandir la superficie con decenas de botones tangibles adicionales (Escape, Borrar, Flechas direccionales, accesos directos) para usuarios que prefieran interactuar manipulando bloques o tarjetas físicas de cartón/madera sobre el escritorio.
 
 ---
 
