@@ -56,6 +56,27 @@ export default function App() {
   const [cooldownMs, setCooldownMs] = useState(400);
   const [fuenteCamara, setFuenteCamara] = useState('0');
   const [historialDisparos, setHistorialDisparos] = useState([]);
+  const [claveStream, setClaveStream] = useState(Date.now());
+  const [errorCargaCamara, setErrorCargaCamara] = useState(false);
+
+  // Cambiar fuente de cámara directamente en caliente
+  const cambiarFuenteCamaraDirecta = async (nuevaFuente) => {
+    setFuenteCamara(String(nuevaFuente));
+    setErrorCargaCamara(false);
+    try {
+      await fetch('http://localhost:8000/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ camera: { source: String(nuevaFuente).trim() } })
+      });
+      // Forzar refresco del stream de video en el navegador
+      setTimeout(() => {
+        setClaveStream(Date.now());
+      }, 500);
+    } catch (err) {
+      console.error('Error al cambiar fuente de cámara:', err);
+    }
+  };
 
   // Cargar configuración inicial desde el backend
   useEffect(() => {
@@ -381,26 +402,82 @@ export default function App() {
               {/* Tarjeta de Visión Cenital en Vivo */}
               {mostrarCamara ? (
                 <div className="p-4 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl backdrop-blur-xl space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
                       <Camera className="w-4 h-4 text-cyan-400" />
                       <span>Visión Cenital Ortogonal (Plano Mesa)</span>
                     </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700">
-                      800x600 Warped
-                    </span>
+                    
+                    {/* Selector Rápido de Cámara en Caliente */}
+                    <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                      <span className="text-[10px] text-slate-400 font-mono px-1">Cam:</span>
+                      <button
+                        onClick={() => cambiarFuenteCamaraDirecta('0')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono transition ${
+                          fuenteCamara === '0'
+                            ? 'bg-cyan-500 text-slate-950 font-bold'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                        title="Cámara 0 (USB Principal)"
+                      >
+                        0 (USB)
+                      </button>
+                      <button
+                        onClick={() => cambiarFuenteCamaraDirecta('1')}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-mono transition ${
+                          fuenteCamara === '1'
+                            ? 'bg-cyan-500 text-slate-950 font-bold'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                        title="Cámara 1 (Secundaria / OBS)"
+                      >
+                        1 (Secundaria)
+                      </button>
+                      <button
+                        onClick={() => {
+                          setErrorCargaCamara(false);
+                          setClaveStream(Date.now());
+                        }}
+                        className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300"
+                        title="Refrescar transmisión"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Viewport de video con marco tecnológico de alta precisión */}
                   <div className="relative rounded-2xl overflow-hidden bg-black aspect-[4/3] flex items-center justify-center border border-slate-800 shadow-inner group">
-                    <img
-                      src="http://localhost:8000/video_feed"
-                      alt="Transmisión cenital en vivo"
-                      className="w-full h-full object-contain"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                      }}
-                    />
+                    {!errorCargaCamara ? (
+                      <img
+                        key={claveStream}
+                        src={`http://localhost:8000/video_feed?t=${claveStream}`}
+                        alt="Transmisión cenital en vivo"
+                        className="w-full h-full object-contain"
+                        onLoad={() => setErrorCargaCamara(false)}
+                        onError={() => setErrorCargaCamara(true)}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center p-6 text-center space-y-2">
+                        <Camera className="w-8 h-8 text-rose-400 animate-pulse" />
+                        <span className="text-xs font-bold text-rose-300">
+                          Reconectando a la fuente {fuenteCamara}...
+                        </span>
+                        <p className="text-[11px] text-slate-500 max-w-xs">
+                          Verifica que el cable USB esté conectado o prueba cambiar entre Cam 0 y Cam 1 arriba.
+                        </p>
+                        <button
+                          onClick={() => {
+                            setErrorCargaCamara(false);
+                            setClaveStream(Date.now());
+                          }}
+                          className="px-3 py-1 rounded-xl text-xs font-bold bg-cyan-500 text-slate-950 hover:bg-cyan-400 transition flex items-center gap-1.5"
+                        >
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Reintentar Conexión</span>
+                        </button>
+                      </div>
+                    )}
 
                     {/* Retículas ópticas esquineras para dar aspecto de instrumento calibrado */}
                     <div className="absolute top-2 left-2 w-3 h-3 border-t-2 border-l-2 border-cyan-400/70 pointer-events-none" />
@@ -410,7 +487,7 @@ export default function App() {
 
                     {/* HUD Badge en esquina inferior */}
                     <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur-md text-[10px] font-mono text-slate-300 border border-white/10">
-                      Homografía Activa
+                      Homografía Activa • Cam {fuenteCamara}
                     </div>
                   </div>
 
